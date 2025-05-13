@@ -1,0 +1,18 @@
+[package]
+name = "track24"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aes = "0.8.4"
+base64 = "0.22.1"
+cbc = "0.1.2"
+md-5 = "0.10.6"
+reqwest = { version = "0.12.15", features = ["json"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+
+[dev-dependencies]
+simple_logger = "5.0.0"
+tokio = { version = "1.44.2", features = ["macros"] }
