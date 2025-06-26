@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
 
-const API_KEY: &'static str = "7255df155458b210b2a13a27cc1c0546";
-const SECRET_KEY: &'static str = "c931242c09483332c56f2a7480a3a226";
-const APPLICATION: &'static str = "net.track24.android.1.118";
+const API_KEY: &'static str = "084c973bbc1e2a5b0393a44339e97e34";
+const SECRET_KEY: &'static str = "a35c75c236f2fa03be1a3fa5fa91fd05";
+const APPLICATION: &'static str = "net.track24.android.1.123";
 
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
