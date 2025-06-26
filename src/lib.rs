@@ -133,7 +133,6 @@ mod test {
 
     #[tokio::test]
     async fn track() {
-        simple_logger::init().unwrap();
         let mut client = Client::new();
         client
             .track(&std::env::var("TRACK_NUMBER").unwrap())
