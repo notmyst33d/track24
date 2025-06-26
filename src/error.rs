@@ -1,44 +1,50 @@
-use aes::cipher::block_padding::UnpadError;
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2025 Myst33d <myst33d@gmail.com>
+
 use std::string::FromUtf8Error;
 
-macro_rules! transparent_from_error {
-    ($into:ty, $from:ty) => {
-        impl From<$from> for $into {
-            fn from(value: $from) -> Self {
-                <$from>::from(value).into()
+use aes::cipher::block_padding::UnpadError;
+use base64::DecodeError;
+
+macro_rules! from {
+    ($from:ty, $error:ty, $variant:expr) => {
+        impl From<$from> for $error {
+            fn from(_: $from) -> Self {
+                $variant
             }
         }
     };
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum BodyDecodingError {
-    #[error(transparent)]
-    Utf8Error(#[from] FromUtf8Error),
+#[error("data decryption failed")]
+pub enum DecryptError {
+    #[error("invalid padding")]
+    InvalidPadding,
 
-    #[error(transparent)]
-    JsonDecodingError(#[from] serde_json::Error),
+    #[error("invalid utf-8")]
+    InvalidUtf8,
 
-    #[error(transparent)]
-    Base64DecodingError(#[from] base64::DecodeError),
-
-    #[error("{}", .0)]
-    DecryptionError(UnpadError),
+    #[error("invalid base64")]
+    InvalidBase64,
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
+#[error("failed to send track request")]
+pub enum TrackError {
     #[error(transparent)]
-    RequestError(#[from] reqwest::Error),
+    SendError(#[from] reqwest::Error),
 
     #[error(transparent)]
-    BodyDecodingError(#[from] BodyDecodingError),
+    DecryptError(#[from] DecryptError),
 
-    #[error("{}", .0)]
+    #[error(transparent)]
+    DeserializationError(#[from] serde_json::Error),
+
+    #[error("api returned an error: {0}")]
     ApiError(String),
 }
 
-transparent_from_error!(Error, FromUtf8Error);
-transparent_from_error!(Error, serde_json::Error);
-transparent_from_error!(Error, base64::DecodeError);
-transparent_from_error!(Error, UnpadError);
+from!(UnpadError, DecryptError, DecryptError::InvalidPadding);
+from!(FromUtf8Error, DecryptError, DecryptError::InvalidUtf8);
+from!(DecodeError, DecryptError, DecryptError::InvalidBase64);
