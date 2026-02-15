@@ -1,21 +1,57 @@
 // SPDX-License-Identifier: MIT
-// Copyright (C) 2025 Myst33d <myst33d@gmail.com>
+// Copyright (C) 2026 Myst33d <myst33d@gmail.com>
 
-pub mod error;
-
-use aes::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
+use aes::cipher::KeyIvInit;
 use base64::{Engine, prelude::BASE64_STANDARD};
+use cipher::{
+    BlockDecryptMut,
+    block_padding::{Pkcs7, UnpadError},
+};
 use md5::{Digest, Md5};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-
-pub use crate::error::{DecryptError, TrackError};
+use std::{error::Error as StdError, fmt, string::FromUtf8Error};
 
 const API_KEY: &str = "084c973bbc1e2a5b0393a44339e97e34";
 const SECRET_KEY: &str = "a35c75c236f2fa03be1a3fa5fa91fd05";
 const APPLICATION: &str = "net.track24.android.1.123";
 
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
+
+pub type Result<T, E = Error> = ::std::result::Result<T, E>;
+
+pub type BoxDynError = Box<dyn StdError + 'static + Send + Sync>;
+
+#[derive(Debug)]
+pub struct Error {
+    pub source: BoxDynError,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl StdError for Error {}
+
+macro_rules! box_error {
+    ($t:ty) => {
+        impl From<$t> for Error {
+            fn from(value: $t) -> Self {
+                Error {
+                    source: Box::new(value),
+                }
+            }
+        }
+    };
+}
+
+box_error!(reqwest::Error);
+box_error!(serde_json::Error);
+box_error!(base64::DecodeError);
+box_error!(UnpadError);
+box_error!(FromUtf8Error);
 
 pub struct Client {
     client: reqwest::Client,
@@ -49,12 +85,6 @@ pub struct TrackResponse {
     pub data: TrackResponseInner,
 }
 
-impl Default for Client {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Client {
     pub fn new() -> Self {
         Self {
@@ -63,13 +93,17 @@ impl Client {
         }
     }
 
-    pub async fn track(&mut self, track_number: &str) -> Result<TrackResponse, TrackError> {
+    pub async fn track(&mut self, track_number: &str) -> Result<TrackResponse> {
         if self.security_key.is_none() {
             match self.send("/android/security.key.php", &[]).await? {
                 ApiResult::Ok { data, .. } => {
                     self.security_key = Some(self.decrypt(&data, SECRET_KEY)?)
                 }
-                ApiResult::Err { message, .. } => return Err(TrackError::ApiError(message)),
+                ApiResult::Err { message, .. } => {
+                    return Err(Error {
+                        source: Box::from(message),
+                    });
+                }
             };
         }
 
@@ -83,29 +117,34 @@ impl Client {
             ApiResult::Ok { data, .. } => {
                 self.decrypt(&data, self.security_key.as_ref().unwrap())?
             }
-            ApiResult::Err { message, .. } => return Err(TrackError::ApiError(message)),
+            ApiResult::Err { message, .. } => {
+                return Err(Error {
+                    source: Box::from(message),
+                });
+            }
         };
 
         Ok(serde_json::from_str(&data)?)
     }
 
-    async fn send(&self, path: &str, req: &[(&str, &str)]) -> Result<ApiResult, reqwest::Error> {
+    async fn send(&self, path: &str, req: &[(&str, &str)]) -> Result<ApiResult> {
         let mut query = vec![("apiKey", API_KEY), ("application", APPLICATION)];
         if let Some(security_key) = &self.security_key {
             query.push(("securityKey", security_key));
         }
         query.extend_from_slice(req);
         let url = Url::parse("https://api.track24.ru").unwrap();
-        self.client
+        Ok(self
+            .client
             .get(url.join(path).unwrap())
             .query(&query)
             .send()
             .await?
             .json()
-            .await
+            .await?)
     }
 
-    fn decrypt(&self, ciphertext: &str, key: &str) -> Result<String, DecryptError> {
+    fn decrypt(&self, ciphertext: &str, key: &str) -> Result<String> {
         let aes_key = {
             let mut hash = Md5::new();
             hash.update(key);
